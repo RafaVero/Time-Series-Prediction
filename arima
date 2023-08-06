@@ -1,0 +1,165 @@
+from statsmodels.tsa.arima.model import ARIMA
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+import gc
+import warnings
+
+import statsmodels.api as sm
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.stattools import adfuller
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
+
+"""# ETL"""
+
+filepath = '/content/ibge_IPCA_mensal_94_23.csv'
+data = pd.read_csv(filepath)
+data
+
+df = data.loc[6:,:]
+df['Date'] = pd.to_datetime(data["Date"])
+df= df.set_index(['Date'])
+
+df = df['IPCA'].str.replace(',', '.')
+df = pd.DataFrame(df)
+df['IPCA'] = df['IPCA'].astype('float64')
+
+fig, ax = plt.subplots()
+df.plot(ax=ax)
+df.diff().plot(ax=ax)
+plt.show()
+
+"""A seguir temos a aplicação do teste dicky-fuller para nos certificarmos de que se trata de uma Time Series estacionária.
+
+De acordo os resultados
+"""
+
+pd.options.display.float_format = '{:.0f}'.format
+warnings.filterwarnings('ignore')
+
+# Import augmented dicky-fuller test function
+
+# Run test
+result = adfuller(df['IPCA'])
+f""
+# Print test statistic
+print(f"Test Statistic:{result[0]:.2f}.")
+
+# Print p-value
+print(f"p-value:{result[1]:.6f}.")
+ 
+# Print critical values
+print(f"Critical values:{result[4]}.")
+
+"""# ARIMA"""
+
+order_aic_bic =[]
+
+# Loop over AR order
+for p in range(3):
+ 
+# Loop over MA order
+    for q in range(3):
+
+# Fit model
+        model = ARIMA(df, order=(p,1,q))     
+        results = model.fit()
+
+# Add order and scores to list
+        order_aic_bic.append((p, q, results.aic, results.bic))
+
+# Make DataFrame of model order and AIC/BIC scores
+        order_df = pd.DataFrame(order_aic_bic, columns=['p','q', 'aic', 'bic'])
+
+order_df.sort_values('aic')
+
+# Instantiate model object
+model = ARIMA(df, order=(1,1,1))
+
+# Fit model
+results = model.fit()
+
+results.plot_diagnostics()
+
+# Generate predictions
+one_step_forecast = results.get_prediction(start=-112)
+
+# Extract prediction mean
+mean_forecast = one_step_forecast.predicted_mean
+
+# Get confidence intervals of  predictions
+confidence_intervals = one_step_forecast.conf_int()#.iloc[1:,:]
+
+# Select lower and upper confidence limits
+lower_limits = confidence_intervals.loc[:,'lower IPCA']
+upper_limits = confidence_intervals.loc[:,'upper IPCA']
+
+# Print best estimate  predictions
+print(mean_forecast)
+
+
+rmse = np.sqrt(mean_squared_error(df.tail(112), mean_forecast))
+
+# Print RMSE
+print(f"RMSE: {rmse}")
+
+# plot the data
+plt.plot(df.index, df,label='observed')
+
+# plot your mean predictions
+plt.plot(mean_forecast.index, mean_forecast,color='r', label='forecast')
+
+# shade the area between your confidence limits
+plt.fill_between(lower_limits.index, lower_limits, upper_limits, color='pink')
+
+# set labels, legends and show plot
+plt.xlabel('Date')
+plt.ylabel('IPCA')
+plt.legend()
+plt.show()
+
+# Generate predictions
+dynamic_forecast = results.get_prediction(start=-112, dynamic=True)
+
+dynamic_mean_forecast = dynamic_forecast.predicted_mean
+
+# Get confidence intervals of predictions
+dynamic_confidence_intervals = dynamic_forecast.conf_int()
+
+# Select lower and upper confidence limits
+dyn_lower_limits = dynamic_confidence_intervals.loc[:,'lower IPCA']
+dyn_upper_limits = dynamic_confidence_intervals.loc[:,'upper IPCA']
+
+dynamic_mean_forecast.shape
+
+"""**PREVISÕES PARA ALÉM DE UM DIA**
+
+"""
+
+rmse = np.sqrt(mean_squared_error(df.tail(112), dynamic_mean_forecast))
+
+# Print RMSE
+print(f"RMSE: {rmse}")
+
+# plot the data
+plt.plot(df.index, df, label='observed')
+
+# plot your mean forecast
+plt.plot(dynamic_mean_forecast.index, dynamic_mean_forecast, color='r', label='forecast')
+
+# shade the area between your confidence limits
+plt.fill_between(dyn_lower_limits.index, dyn_lower_limits, 
+         dyn_upper_limits, color='pink')
+
+# set labels, legends and show plot
+plt.xlabel('Date')
+plt.ylabel('IPCA')
+plt.legend()
+plt.show()
+
+results.summary()
+
